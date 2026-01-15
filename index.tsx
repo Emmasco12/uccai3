@@ -14,6 +14,7 @@ type Message = {
   role: 'user' | 'model';
   text: string;
   isStreaming?: boolean;
+  groundingMetadata?: any;
 };
 
 // Sidebar Component
@@ -33,14 +34,14 @@ const Sidebar = ({ onNewChat }: { onNewChat: () => void }) => (
     
     <div className="flex-1 overflow-y-auto px-3 py-2 scrollbar-thin scrollbar-thumb-gray-700">
         <div className="text-xs font-semibold text-gray-500 mb-2 px-2 pt-2">Today</div>
-        {['React UI Design', 'Gemini API Help', 'Typescript Interfaces'].map((item, i) => (
+        {['Latest AI News', 'React 19 Features', 'Stock Market Trends'].map((item, i) => (
             <div key={i} className="px-2 py-2 text-sm text-gray-300 hover:bg-[#212121] rounded-lg cursor-pointer truncate transition-colors">
                 {item}
             </div>
         ))}
         
         <div className="text-xs font-semibold text-gray-500 mb-2 px-2 pt-4">Previous 7 Days</div>
-        {['Marketing Plan', 'Python Scripting', 'Travel Itinerary'].map((item, i) => (
+        {['Weekly Meal Prep', 'Debug Python Script', 'Tokyo Travel Guide'].map((item, i) => (
             <div key={i + 10} className="px-2 py-2 text-sm text-gray-300 hover:bg-[#212121] rounded-lg cursor-pointer truncate transition-colors">
                 {item}
             </div>
@@ -81,7 +82,37 @@ const MessageBubble: React.FC<{ message: Message }> = ({ message }) => {
 
     // Parse markdown
     const html = marked.parse(message.text);
-    return <div className="prose prose-invert prose-sm max-w-none text-[#ececec]" dangerouslySetInnerHTML={{ __html: html }} />;
+    return (
+        <div>
+            <div className="prose prose-invert prose-sm max-w-none text-[#ececec]" dangerouslySetInnerHTML={{ __html: html }} />
+            
+            {/* Render Grounding Sources */}
+            {message.groundingMetadata?.groundingChunks && (
+                <div className="mt-4 pt-3 border-t border-white/10">
+                    <div className="text-xs font-semibold text-gray-400 mb-2">Sources</div>
+                    <div className="flex flex-wrap gap-2">
+                        {message.groundingMetadata.groundingChunks.map((chunk: any, idx: number) => {
+                            if (chunk.web) {
+                                return (
+                                    <a 
+                                        key={idx} 
+                                        href={chunk.web.uri} 
+                                        target="_blank" 
+                                        rel="noopener noreferrer"
+                                        className="flex items-center gap-2 bg-[#212121] hover:bg-[#333] border border-white/10 rounded-full px-3 py-1.5 text-xs text-gray-300 transition-colors max-w-full truncate"
+                                    >
+                                        <span className="truncate max-w-[150px]">{chunk.web.title}</span>
+                                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-50"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+                                    </a>
+                                );
+                            }
+                            return null;
+                        })}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
   };
 
   return (
@@ -127,10 +158,17 @@ const App = () => {
   // Initialize chat session
   useEffect(() => {
     try {
+      // Get current date for the system prompt
+      const today = new Date();
+      const dateString = today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+      
       chatSessionRef.current = ai.chats.create({
         model: 'gemini-3-flash-preview',
         config: {
-          systemInstruction: "You are UCCAI, a helpful, intelligent, and precise AI assistant. You answer questions clearly and concisely. You format your answers using Markdown."
+          systemInstruction: `You are UCCAI, a helpful, intelligent, and precise AI assistant. 
+          Current Date: ${dateString}.
+          You answer questions clearly and concisely. You format your answers using Markdown.`,
+          tools: [{googleSearch: {}}], // Enable Google Search for real-time updates
         }
       });
     } catch (error) {
@@ -141,10 +179,31 @@ const App = () => {
   // Auto-scroll to bottom when messages change
   useEffect(() => {
     if (messagesEndRef.current) {
-        // Only auto scroll if near bottom or if it's a new message
         messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
-  }, [messages]);
+  }, [messages, isLoading]);
+
+  // Handle New Chat
+  const handleNewChat = () => {
+      setMessages([]);
+      // Re-initialize chat session to clear history context
+      try {
+        const today = new Date();
+        const dateString = today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        
+        chatSessionRef.current = ai.chats.create({
+            model: 'gemini-3-flash-preview',
+            config: {
+              systemInstruction: `You are UCCAI, a helpful, intelligent, and precise AI assistant. 
+              Current Date: ${dateString}.
+              You answer questions clearly and concisely. You format your answers using Markdown.`,
+              tools: [{googleSearch: {}}],
+            }
+        });
+      } catch (error) {
+          console.error("Failed to reset chat:", error);
+      }
+  };
 
   // Handle message sending
   const handleSend = async (textOverride?: string) => {
@@ -170,15 +229,21 @@ const App = () => {
       const streamResult = await chatSessionRef.current.sendMessageStream({ message: textToSend });
       
       let fullText = "";
+      let collectedGroundingMetadata: any = null;
       
       for await (const chunk of streamResult) {
         const c = chunk as GenerateContentResponse;
         const chunkText = c.text || "";
         fullText += chunkText;
         
-        // Update the last message with new content
+        // Capture grounding metadata if present in this chunk
+        if (c.candidates?.[0]?.groundingMetadata) {
+            collectedGroundingMetadata = c.candidates[0].groundingMetadata;
+        }
+
+        // Update the last message with new content and potential grounding data
         setMessages(prev => prev.map(msg => 
-          msg.id === aiMsgId ? { ...msg, text: fullText } : msg
+          msg.id === aiMsgId ? { ...msg, text: fullText, groundingMetadata: collectedGroundingMetadata } : msg
         ));
       }
 
@@ -214,28 +279,29 @@ const App = () => {
     <div className="flex h-full w-full bg-[#212121] text-[#ececec] font-sans overflow-hidden">
         
       {/* Sidebar */}
-      <Sidebar onNewChat={() => setMessages([])} />
+      <Sidebar onNewChat={handleNewChat} />
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col h-full relative w-full">
+      <div className="flex-1 flex flex-col h-full relative w-full min-w-0">
         
-        {/* Header / Top Bar */}
-        <div className="absolute top-0 left-0 right-0 p-3 z-20 flex justify-between items-center md:justify-start bg-[#212121]/50 backdrop-blur-sm md:bg-transparent md:backdrop-blur-none">
-            <div className="md:hidden">
+        {/* Header / Top Bar (Non-Absolute to simplify layout or Absolute with spacer) */}
+        {/* Using absolute header but ensuring scroll container has top padding or transparency is managed */}
+        <div className="absolute top-0 left-0 right-0 p-3 z-20 flex justify-between items-center md:justify-start bg-[#212121]/80 backdrop-blur-sm md:bg-transparent md:backdrop-blur-none pointer-events-none md:pointer-events-auto">
+            <div className="md:hidden pointer-events-auto">
                  <button className="p-2 text-gray-400 hover:text-white"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg></button>
             </div>
-            <button className="flex items-center gap-1.5 text-lg font-semibold text-gray-200 px-3 py-2 rounded-xl hover:bg-[#2f2f2f] transition-colors cursor-pointer ml-auto md:ml-0 mr-auto md:mr-0">
+            <button className="pointer-events-auto flex items-center gap-1.5 text-lg font-semibold text-gray-200 px-3 py-2 rounded-xl hover:bg-[#2f2f2f] transition-colors cursor-pointer ml-auto md:ml-0 mr-auto md:mr-0">
                 <span>UCCAI</span>
-                <span className="text-gray-500 text-lg">3.0</span>
+                <span className="text-gray-500 text-lg">3.0 Flash</span>
                 <svg className="w-4 h-4 text-gray-500 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
             </button>
             <div className="w-10 md:hidden"></div> {/* spacer */}
         </div>
 
-        {/* Scrollable Area */}
-        <div className="flex-1 overflow-y-auto w-full relative">
+        {/* Scrollable Area - Use Flex-1 and min-h-0 to allow scrolling inside flex item */}
+        <div className="flex-1 overflow-y-auto w-full relative min-h-0 scroll-smooth pt-16 md:pt-14">
             {messages.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center p-4">
+                <div className="min-h-full flex flex-col items-center justify-center p-4">
                         <div className="w-16 h-16 bg-white rounded-full mb-6 flex items-center justify-center shadow-lg animate-fade-in-up">
                             {/* Logo */}
                             <svg className="w-8 h-8 text-black" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
@@ -243,11 +309,11 @@ const App = () => {
                         <h2 className="text-2xl md:text-3xl font-semibold mb-8 text-center text-white">What can I help with?</h2>
                         
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 w-full max-w-2xl px-4">
-                        <button onClick={() => handleSend("Create a workout plan")} className="p-4 rounded-xl border border-white/10 hover:bg-[#2f2f2f] text-left transition-all hover:border-white/20 group">
+                        <button onClick={() => handleSend("What is the latest news today?")} className="p-4 rounded-xl border border-white/10 hover:bg-[#2f2f2f] text-left transition-all hover:border-white/20 group">
                             <div className="flex justify-between items-start">
                                 <div>
-                                    <div className="font-medium text-sm text-gray-200">Create a workout plan</div>
-                                    <div className="text-xs text-gray-500 mt-1">for muscle gain</div>
+                                    <div className="font-medium text-sm text-gray-200">Latest News</div>
+                                    <div className="text-xs text-gray-500 mt-1">Get today's top headlines</div>
                                 </div>
                                 <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-black/20 p-1 rounded">
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
@@ -290,7 +356,7 @@ const App = () => {
                         </div>
                 </div>
             ) : (
-                <div className="w-full h-full pb-40">
+                <div className="w-full min-h-full pb-4">
                     {messages.map((msg) => (
                         <MessageBubble key={msg.id} message={msg} />
                     ))}
@@ -299,8 +365,8 @@ const App = () => {
             )}
         </div>
 
-        {/* Floating Input Area */}
-        <div className="flex-none p-4 w-full absolute bottom-0 bg-gradient-to-t from-[#212121] via-[#212121] to-transparent pt-10 z-10">
+        {/* Static Input Area (Footer) - Ensures layout stability and scrolling */}
+        <div className="flex-none p-4 w-full bg-[#212121] z-10">
             <div className="max-w-3xl mx-auto">
                 <div className="bg-[#2f2f2f] rounded-[26px] p-3 shadow-xl relative border border-white/5 focus-within:border-white/10 transition-colors">
                     <textarea
