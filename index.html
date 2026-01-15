@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UCCAI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <style>
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #424242;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #4f4f4f;
+        }
+        
+        /* Markdown Styles */
+        .prose p { margin-bottom: 1em; }
+        .prose ul { list-style-type: disc; padding-left: 1.5em; margin-bottom: 1em; }
+        .prose ol { list-style-type: decimal; padding-left: 1.5em; margin-bottom: 1em; }
+        .prose pre { background: #0d0d0d; padding: 1em; border-radius: 0.5em; overflow-x: auto; margin-bottom: 1em; border: 1px solid #333; }
+        .prose code { font-family: monospace; background: rgba(255,255,255,0.1); padding: 0.1em 0.3em; border-radius: 0.2em; }
+        .prose pre code { background: transparent; padding: 0; color: inherit; }
+        .prose h1, .prose h2, .prose h3 { font-weight: 600; margin-top: 1.5em; margin-bottom: 0.5em; color: #ececec; }
+        .prose strong { color: #fff; font-weight: 600; }
+        .prose a { color: #60a5fa; text-decoration: underline; }
+        .prose blockquote { border-left: 3px solid #555; padding-left: 1em; color: #a1a1a1; font-style: italic; }
+    </style>
+<script type="importmap">
+{
+  "imports": {
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "react": "https://esm.sh/react@^19.2.3",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "@google/genai": "https://esm.sh/@google/genai@^1.36.0"
+  }
+}
+</script>
+</head>
+<body class="bg-[#212121] text-[#ececec] h-screen overflow-hidden selection:bg-blue-500/30 selection:text-white">
+    <div id="root" class="h-full w-full"></div>
+    <script type="module" src="./index.tsx"></script>
+</body>
+</html>
