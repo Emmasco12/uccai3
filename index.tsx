@@ -65,55 +65,20 @@ const Sidebar = ({ onNewChat }: { onNewChat: () => void }) => (
 const MessageBubble: React.FC<{ message: Message }> = ({ message }) => {
   const isUser = message.role === 'user';
   
-  // Render markdown content safely
-  const renderContent = () => {
-    if (isUser) return <p className="whitespace-pre-wrap">{message.text}</p>;
-    
-    // If no text yet and streaming
-    if (!message.text && message.isStreaming) {
-      return (
-        <div className="flex space-x-1 items-center h-6">
-          <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
-          <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
-          <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-        </div>
-      );
+  // Safe markdown parsing
+  const getHtml = (text: string) => {
+    try {
+        if (typeof marked !== 'undefined' && marked.parse) {
+            return marked.parse(text);
+        }
+    } catch (e) {
+        console.error("Markdown parsing failed", e);
     }
-
-    // Parse markdown
-    const html = marked.parse(message.text);
-    return (
-        <div>
-            <div className="prose prose-invert prose-sm max-w-none text-[#ececec]" dangerouslySetInnerHTML={{ __html: html }} />
-            
-            {/* Render Grounding Sources */}
-            {message.groundingMetadata?.groundingChunks && (
-                <div className="mt-4 pt-3 border-t border-white/10">
-                    <div className="text-xs font-semibold text-gray-400 mb-2">Sources</div>
-                    <div className="flex flex-wrap gap-2">
-                        {message.groundingMetadata.groundingChunks.map((chunk: any, idx: number) => {
-                            if (chunk.web) {
-                                return (
-                                    <a 
-                                        key={idx} 
-                                        href={chunk.web.uri} 
-                                        target="_blank" 
-                                        rel="noopener noreferrer"
-                                        className="flex items-center gap-2 bg-[#212121] hover:bg-[#333] border border-white/10 rounded-full px-3 py-1.5 text-xs text-gray-300 transition-colors max-w-full truncate"
-                                    >
-                                        <span className="truncate max-w-[150px]">{chunk.web.title}</span>
-                                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-50"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
-                                    </a>
-                                );
-                            }
-                            return null;
-                        })}
-                    </div>
-                </div>
-            )}
-        </div>
-    );
+    return text;
   };
+
+  // Render content
+  const htmlContent = getHtml(message.text);
 
   return (
     <div className={`flex w-full px-4 md:px-0 max-w-3xl mx-auto py-6 ${isUser ? '' : ''}`}>
@@ -121,7 +86,7 @@ const MessageBubble: React.FC<{ message: Message }> = ({ message }) => {
         {/* Avatar */}
         <div className={`flex-none w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shadow-sm ring-1 ring-white/10 ${
           isUser 
-            ? 'hidden' // Hide user avatar in ChatGPT style usually, or keep it minimal
+            ? 'hidden' // Hide user avatar in ChatGPT style
             : 'bg-white text-black'
         }`}>
           {isUser ? '' : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>}
@@ -138,7 +103,45 @@ const MessageBubble: React.FC<{ message: Message }> = ({ message }) => {
           {!isUser && (
               <div className="text-xs font-bold mb-1 opacity-90">UCCAI</div>
           )}
-          {renderContent()}
+          
+          {/* Text Content */}
+          {!message.text && message.isStreaming ? (
+            <div className="flex space-x-1 items-center h-6">
+              <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+              <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+              <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+            </div>
+          ) : (
+            <div>
+                 <div className="prose prose-invert prose-sm max-w-none text-[#ececec]" dangerouslySetInnerHTML={{ __html: htmlContent }} />
+                 
+                 {/* Grounding Sources - safely rendered */}
+                 {message.groundingMetadata?.groundingChunks?.length > 0 && (
+                    <div className="mt-4 pt-3 border-t border-white/10">
+                        <div className="text-xs font-semibold text-gray-400 mb-2">Sources</div>
+                        <div className="flex flex-wrap gap-2">
+                            {message.groundingMetadata.groundingChunks.map((chunk: any, idx: number) => {
+                                if (chunk?.web?.uri && chunk?.web?.title) {
+                                    return (
+                                        <a 
+                                            key={idx} 
+                                            href={chunk.web.uri} 
+                                            target="_blank" 
+                                            rel="noopener noreferrer"
+                                            className="flex items-center gap-2 bg-[#212121] hover:bg-[#333] border border-white/10 rounded-full px-3 py-1.5 text-xs text-gray-300 transition-colors max-w-full truncate"
+                                        >
+                                            <span className="truncate max-w-[150px]">{chunk.web.title}</span>
+                                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-50"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+                                        </a>
+                                    );
+                                }
+                                return null;
+                            })}
+                        </div>
+                    </div>
+                )}
+            </div>
+          )}
         </div>
       </div>
     </div>
