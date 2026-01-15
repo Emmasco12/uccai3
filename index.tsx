@@ -14,7 +14,6 @@ type Message = {
   role: 'user' | 'model';
   text: string;
   isStreaming?: boolean;
-  groundingMetadata?: any;
 };
 
 // Sidebar Component
@@ -114,32 +113,6 @@ const MessageBubble: React.FC<{ message: Message }> = ({ message }) => {
           ) : (
             <div>
                  <div className="prose prose-invert prose-sm max-w-none text-[#ececec]" dangerouslySetInnerHTML={{ __html: htmlContent }} />
-                 
-                 {/* Grounding Sources - safely rendered */}
-                 {message.groundingMetadata?.groundingChunks?.length > 0 && (
-                    <div className="mt-4 pt-3 border-t border-white/10">
-                        <div className="text-xs font-semibold text-gray-400 mb-2">Sources</div>
-                        <div className="flex flex-wrap gap-2">
-                            {message.groundingMetadata.groundingChunks.map((chunk: any, idx: number) => {
-                                if (chunk?.web?.uri && chunk?.web?.title) {
-                                    return (
-                                        <a 
-                                            key={idx} 
-                                            href={chunk.web.uri} 
-                                            target="_blank" 
-                                            rel="noopener noreferrer"
-                                            className="flex items-center gap-2 bg-[#212121] hover:bg-[#333] border border-white/10 rounded-full px-3 py-1.5 text-xs text-gray-300 transition-colors max-w-full truncate"
-                                        >
-                                            <span className="truncate max-w-[150px]">{chunk.web.title}</span>
-                                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-50"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
-                                        </a>
-                                    );
-                                }
-                                return null;
-                            })}
-                        </div>
-                    </div>
-                )}
             </div>
           )}
         </div>
@@ -174,7 +147,6 @@ const App = () => {
           
           About the Founder:
           Emmanuel Agyemang is the founder of [UCCAI.online](https://www.uccai.online), a platform dedicated to innovation and technology solutions. He is currently pursuing a BSc in Economics with Finance at the University of Cape Coast, while also working as a skilled software developer. Known for his humility, calm nature, and strong faith in God, Emmanuel balances academics and technology with purpose. His elder brother, Daniel Agyemang, is pursuing BSc in Computer Science in the UK, showing that tech talent runs in the family.`,
-          tools: [{googleSearch: {}}], // Enable Google Search for real-time updates
         }
       });
     } catch (error) {
@@ -206,7 +178,6 @@ const App = () => {
 
               About the Founder:
               Emmanuel Agyemang is the founder of [UCCAI.online](https://www.uccai.online), a platform dedicated to innovation and technology solutions. He is currently pursuing a BSc in Economics with Finance at the University of Cape Coast, while also working as a skilled software developer. Known for his humility, calm nature, and strong faith in God, Emmanuel balances academics and technology with purpose. His elder brother, Daniel Agyemang, is pursuing BSc in Computer Science in the UK, showing that tech talent runs in the family.`,
-              tools: [{googleSearch: {}}],
             }
         });
       } catch (error) {
@@ -238,21 +209,15 @@ const App = () => {
       const streamResult = await chatSessionRef.current.sendMessageStream({ message: textToSend });
       
       let fullText = "";
-      let collectedGroundingMetadata: any = null;
       
       for await (const chunk of streamResult) {
         const c = chunk as GenerateContentResponse;
         const chunkText = c.text || "";
         fullText += chunkText;
-        
-        // Capture grounding metadata if present in this chunk
-        if (c.candidates?.[0]?.groundingMetadata) {
-            collectedGroundingMetadata = c.candidates[0].groundingMetadata;
-        }
 
-        // Update the last message with new content and potential grounding data
+        // Update the last message with new content
         setMessages(prev => prev.map(msg => 
-          msg.id === aiMsgId ? { ...msg, text: fullText, groundingMetadata: collectedGroundingMetadata } : msg
+          msg.id === aiMsgId ? { ...msg, text: fullText } : msg
         ));
       }
 
@@ -265,7 +230,7 @@ const App = () => {
       console.error("Error sending message:", error);
       setMessages(prev => prev.map(msg => 
         msg.id === aiMsgId 
-          ? { ...msg, text: "Sorry, I encountered an error processing your request.", isStreaming: false } 
+          ? { ...msg, text: "Sorry, I encountered an error processing your request. Please ensure your API key is valid and you are connected to the internet.", isStreaming: false } 
           : msg
       ));
     } finally {
