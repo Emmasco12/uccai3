@@ -14,6 +14,14 @@ type Message = {
   role: 'user' | 'model';
   text: string;
   isStreaming?: boolean;
+  // Optional: storing base64 for display in chat history if needed, 
+  // though for now we just rely on the text response context.
+  images?: string[]; 
+};
+
+type Attachment = {
+  file: File;
+  previewUrl: string;
 };
 
 // Sidebar Component
@@ -103,6 +111,17 @@ const MessageBubble: React.FC<{ message: Message }> = ({ message }) => {
               <div className="text-xs font-bold mb-1 opacity-90">UCCAI</div>
           )}
           
+          {/* Images/Attachments in History (Simple view) */}
+          {message.images && message.images.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-3">
+              {message.images.map((img, idx) => (
+                <div key={idx} className="relative h-24 w-24 rounded-lg overflow-hidden border border-white/10">
+                   <img src={img} alt="User upload" className="h-full w-full object-cover" />
+                </div>
+              ))}
+            </div>
+          )}
+
           {/* Text Content */}
           {!message.text && message.isStreaming ? (
             <div className="flex space-x-1 items-center h-6">
@@ -121,15 +140,39 @@ const MessageBubble: React.FC<{ message: Message }> = ({ message }) => {
   );
 };
 
+// Helper to convert File to Gemini Part
+const fileToPart = (file: File): Promise<any> => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            if (typeof reader.result === 'string') {
+                const base64Data = reader.result.split(',')[1];
+                resolve({
+                    inlineData: {
+                        data: base64Data,
+                        mimeType: file.type
+                    }
+                });
+            } else {
+                reject(new Error("Failed to read file"));
+            }
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+};
+
 const App = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
   
   // Ref to persist the chat session across renders
   const chatSessionRef = useRef<GenAIChat | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Initialize chat session
   useEffect(() => {
@@ -144,6 +187,7 @@ const App = () => {
           systemInstruction: `You are UCCAI, a helpful, intelligent, and precise AI assistant. 
           Current Date: ${dateString}.
           You answer questions clearly and concisely. You format your answers using Markdown.
+          You can analyze images and documents provided by the user.
           
           About the Founder:
           Emmanuel Agyemang is the founder of [UCCAI.online](https://www.uccai.online), a platform dedicated to innovation and technology solutions. He is currently pursuing a BSc in Economics with Finance at the University of Cape Coast, while also working as a skilled software developer. Known for his humility, calm nature, and strong faith in God, Emmanuel balances academics and technology with purpose. His elder brother, Daniel Agyemang, is pursuing BSc in Computer Science in the UK, showing that tech talent runs in the family.`,
@@ -164,6 +208,7 @@ const App = () => {
   // Handle New Chat
   const handleNewChat = () => {
       setMessages([]);
+      setAttachments([]);
       // Re-initialize chat session to clear history context
       try {
         const today = new Date();
@@ -175,6 +220,7 @@ const App = () => {
               systemInstruction: `You are UCCAI, a helpful, intelligent, and precise AI assistant. 
               Current Date: ${dateString}.
               You answer questions clearly and concisely. You format your answers using Markdown.
+              You can analyze images and documents provided by the user.
 
               About the Founder:
               Emmanuel Agyemang is the founder of [UCCAI.online](https://www.uccai.online), a platform dedicated to innovation and technology solutions. He is currently pursuing a BSc in Economics with Finance at the University of Cape Coast, while also working as a skilled software developer. Known for his humility, calm nature, and strong faith in God, Emmanuel balances academics and technology with purpose. His elder brother, Daniel Agyemang, is pursuing BSc in Computer Science in the UK, showing that tech talent runs in the family.`,
@@ -185,12 +231,39 @@ const App = () => {
       }
   };
 
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (e.target.files && e.target.files.length > 0) {
+          const newAttachments: Attachment[] = [];
+          Array.from(e.target.files).forEach((file: File) => {
+              newAttachments.push({
+                  file,
+                  previewUrl: URL.createObjectURL(file)
+              });
+          });
+          setAttachments(prev => [...prev, ...newAttachments]);
+      }
+      // Reset input value to allow selecting the same file again if needed
+      if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const removeAttachment = (index: number) => {
+      setAttachments(prev => {
+          const newAtts = [...prev];
+          URL.revokeObjectURL(newAtts[index].previewUrl); // Cleanup memory
+          newAtts.splice(index, 1);
+          return newAtts;
+      });
+  };
+
   // Handle message sending
   const handleSend = async (textOverride?: string) => {
     const textToSend = textOverride || input;
-    if (!textToSend.trim() || isLoading || !chatSessionRef.current) return;
+    // Allow sending if there's text OR attachments
+    if ((!textToSend.trim() && attachments.length === 0) || isLoading || !chatSessionRef.current) return;
 
     setInput("");
+    const currentAttachments = [...attachments];
+    setAttachments([]); // Clear attachments from UI immediately
     setIsLoading(true);
     
     // Reset textarea height
@@ -198,15 +271,36 @@ const App = () => {
 
     // Add user message
     const userMsgId = Date.now().toString();
-    setMessages(prev => [...prev, { id: userMsgId, role: 'user', text: textToSend }]);
+    const displayImages = currentAttachments.map(a => a.previewUrl);
+    
+    setMessages(prev => [...prev, { 
+        id: userMsgId, 
+        role: 'user', 
+        text: textToSend,
+        images: displayImages // Save preview URLs for history
+    }]);
 
     // Prepare placeholder for AI response
     const aiMsgId = (Date.now() + 1).toString();
     setMessages(prev => [...prev, { id: aiMsgId, role: 'model', text: "", isStreaming: true }]);
 
     try {
-      // Send stream request
-      const streamResult = await chatSessionRef.current.sendMessageStream({ message: textToSend });
+      // Prepare Parts for API
+      const parts: any[] = [];
+      
+      // Process attachments
+      for (const att of currentAttachments) {
+          const part = await fileToPart(att.file);
+          parts.push(part);
+      }
+
+      // Add text part if exists
+      if (textToSend.trim()) {
+          parts.push({ text: textToSend });
+      }
+
+      // Send request (passing parts array as message)
+      const streamResult = await chatSessionRef.current.sendMessageStream({ message: parts });
       
       let fullText = "";
       
@@ -230,7 +324,7 @@ const App = () => {
       console.error("Error sending message:", error);
       setMessages(prev => prev.map(msg => 
         msg.id === aiMsgId 
-          ? { ...msg, text: "Sorry, I encountered an error processing your request. Please ensure your API key is valid and you are connected to the internet.", isStreaming: false } 
+          ? { ...msg, text: "Sorry, I encountered an error processing your request. Please ensure your API key is valid, your file types are supported, and you are connected to the internet.", isStreaming: false } 
           : msg
       ));
     } finally {
@@ -343,6 +437,29 @@ const App = () => {
         <div className="flex-none p-4 w-full bg-[#212121] z-10">
             <div className="max-w-3xl mx-auto">
                 <div className="bg-[#2f2f2f] rounded-[26px] p-3 shadow-xl relative border border-white/5 focus-within:border-white/10 transition-colors">
+                    {/* Attachment Preview Area */}
+                    {attachments.length > 0 && (
+                        <div className="flex gap-3 mb-2 overflow-x-auto pb-2 px-2 scrollbar-thin">
+                            {attachments.map((att, idx) => (
+                                <div key={idx} className="relative group flex-none">
+                                    <div className="w-16 h-16 rounded-xl border border-white/10 overflow-hidden bg-[#212121] flex items-center justify-center">
+                                        {att.file.type.startsWith('image/') ? (
+                                            <img src={att.previewUrl} alt="preview" className="w-full h-full object-cover" />
+                                        ) : (
+                                            <svg className="w-8 h-8 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+                                        )}
+                                    </div>
+                                    <button 
+                                        onClick={() => removeAttachment(idx)}
+                                        className="absolute -top-2 -right-2 bg-gray-700 text-white rounded-full p-0.5 shadow-md hover:bg-red-500 transition-colors"
+                                    >
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                    
                     <textarea
                         ref={inputRef}
                         value={input}
@@ -360,16 +477,28 @@ const App = () => {
                     />
                     <div className="flex justify-between items-center mt-2 px-2">
                         <div className="flex gap-2 text-gray-400">
-                             <button className="p-2 hover:bg-[#424242] rounded-full transition-colors hover:text-white" title="Attach file">
+                             <input 
+                                type="file" 
+                                multiple 
+                                ref={fileInputRef} 
+                                className="hidden" 
+                                onChange={handleFileSelect}
+                                accept="image/*,application/pdf,text/*"
+                             />
+                             <button 
+                                onClick={() => fileInputRef.current?.click()}
+                                className="p-2 hover:bg-[#424242] rounded-full transition-colors hover:text-white" 
+                                title="Attach file"
+                             >
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
                              </button>
                         </div>
                         <div className="flex gap-2">
                             <button
                                 onClick={() => handleSend()}
-                                disabled={!input.trim() || isLoading}
+                                disabled={(!input.trim() && attachments.length === 0) || isLoading}
                                 className={`p-2 rounded-full transition-all duration-200 ${
-                                    input.trim() && !isLoading
+                                    (input.trim() || attachments.length > 0) && !isLoading
                                     ? "bg-white text-black hover:bg-gray-200 shadow-md"
                                     : "bg-[#676767]/30 text-gray-500 cursor-not-allowed"
                                 }`}
