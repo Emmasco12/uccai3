@@ -14,8 +14,6 @@ type Message = {
   role: 'user' | 'model';
   text: string;
   isStreaming?: boolean;
-  // Optional: storing base64 for display in chat history if needed, 
-  // though for now we just rely on the text response context.
   images?: string[]; 
 };
 
@@ -24,8 +22,11 @@ type Attachment = {
   previewUrl: string;
 };
 
+// --- Chat Interface Components ---
+
 // Sidebar Component
-const Sidebar = ({ onNewChat, isOpen, onClose }: { onNewChat: () => void, isOpen: boolean, onClose: () => void }) => (
+const Sidebar = ({ onNewChat, isOpen, onClose }: { onNewChat: () => void, isOpen: boolean, onClose: () => void }) => {
+  return (
   <>
     {/* Mobile Overlay Backdrop */}
     <div 
@@ -73,21 +74,10 @@ const Sidebar = ({ onNewChat, isOpen, onClose }: { onNewChat: () => void, isOpen
               </div>
           ))}
       </div>
-
-      <div className="p-3 border-t border-white/5">
-          <div className="flex items-center gap-3 px-2 py-3 hover:bg-[#212121] rounded-lg cursor-pointer transition-colors">
-              <div className="w-8 h-8 rounded-full bg-purple-600 flex items-center justify-center text-white text-xs font-bold ring-1 ring-white/20">
-                  JD
-              </div>
-              <div className="flex-1">
-                  <div className="text-sm font-medium text-white">John Doe</div>
-                  <div className="text-xs text-gray-500">Free Plan</div>
-              </div>
-          </div>
-      </div>
     </div>
   </>
-);
+  );
+};
 
 const MessageBubble: React.FC<{ message: Message }> = ({ message }) => {
   const isUser = message.role === 'user';
@@ -182,7 +172,7 @@ const fileToPart = (file: File): Promise<any> => {
     });
 };
 
-const App = () => {
+const ChatInterface = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -203,8 +193,9 @@ const App = () => {
       const dateString = today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
       
       chatSessionRef.current = ai.chats.create({
-        model: 'gemini-3-flash-preview',
+        model: 'gemini-flash-lite-latest',
         config: {
+          thinkingConfig: { thinkingBudget: 0 }, // Speed optimization: Disable thinking
           systemInstruction: `You are UCCAI, a helpful, intelligent, and precise AI assistant. 
           Current Date: ${dateString}.
           You answer questions clearly and concisely. You format your answers using Markdown.
@@ -236,8 +227,9 @@ const App = () => {
         const dateString = today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
         
         chatSessionRef.current = ai.chats.create({
-            model: 'gemini-3-flash-preview',
+            model: 'gemini-flash-lite-latest',
             config: {
+              thinkingConfig: { thinkingBudget: 0 }, // Speed optimization: Disable thinking
               systemInstruction: `You are UCCAI, a helpful, intelligent, and precise AI assistant. 
               Current Date: ${dateString}.
               You answer questions clearly and concisely. You format your answers using Markdown.
@@ -312,10 +304,10 @@ const App = () => {
       // Prepare Parts for API
       const parts: any[] = [];
       
-      // Process attachments
-      for (const att of currentAttachments) {
-          const part = await fileToPart(att.file);
-          parts.push(part);
+      // Process attachments in parallel for speed
+      if (currentAttachments.length > 0) {
+        const processedParts = await Promise.all(currentAttachments.map(att => fileToPart(att.file)));
+        parts.push(...processedParts);
       }
 
       // Add text part if exists
@@ -393,7 +385,7 @@ const App = () => {
             </div>
             <button className="pointer-events-auto flex items-center gap-1.5 text-lg font-semibold text-gray-200 px-3 py-2 rounded-xl hover:bg-[#2f2f2f] transition-colors cursor-pointer ml-auto md:ml-0 mr-auto md:mr-0">
                 <span>UCCAI</span>
-                <span className="text-gray-500 text-lg">3.0 Flash</span>
+                <span className="text-gray-500 text-lg">Flash Lite</span>
                 <svg className="w-4 h-4 text-gray-500 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
             </button>
             <div className="w-10 md:hidden"></div> {/* spacer */}
@@ -554,6 +546,9 @@ const App = () => {
   );
 };
 
-// Initialize app
+const App = () => {
+    return <ChatInterface />;
+};
+
 const root = createRoot(document.getElementById("root")!);
 root.render(<App />);
