@@ -1,6 +1,25 @@
 import React, { useState, useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { GoogleGenAI, Chat as GenAIChat, GenerateContentResponse } from "@google/genai";
+import { 
+  Plus, 
+  MessageSquare, 
+  PanelLeft, 
+  ChevronDown, 
+  Paperclip, 
+  ArrowUp, 
+  X, 
+  Info, 
+  User, 
+  ExternalLink,
+  Mail,
+  Globe,
+  Sparkles,
+  Search,
+  Code,
+  Mail as MailIcon
+} from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
 
 // Declare globals for the CDN libraries
 declare const marked: any;
@@ -8,6 +27,34 @@ declare const hljs: any;
 
 // Initialize the API client
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+const getSystemInstruction = (dateString: string) => `You are UCCAI, a helpful, intelligent, and precise AI assistant. 
+Current Date: ${dateString}.
+You have access to Google Search to provide real-time information and the latest news.
+You answer questions clearly and concisely. You format your answers using Markdown.
+You can analyze images and documents provided by the user.
+
+About Concord (Subject-Verb Agreement):
+When asked about Concord, you should explain that it is the agreement between a subject and its verb in a sentence. 
+Key Rules of Concord to include:
+1. Singular subjects take singular verbs (e.g., "The boy plays").
+2. Plural subjects take plural verbs (e.g., "The boys play").
+3. "And" Rule: Two or more subjects joined by "and" usually take a plural verb.
+4. "Either/Or" and "Neither/Nor" Rule: The verb agrees with the subject closer to it.
+5. Collective Nouns: Usually take singular verbs if the group acts as one.
+6. Indefinite Pronouns: Words like "everyone", "someone", "each" take singular verbs.
+
+About the Founder:
+When asked about the founder, you MUST provide this exact information:
+**Emmanuel Agyemang** is the founder of **UCCAI.online** (uccai.online) and a passionate software developer dedicated to using technology to support learning and innovation. He is currently pursuing a **Bachelor of Science (BSc) in Economics with Finance at the University of Cape Coast (UCC)**.
+
+Emmanuel is known for his simple, kind, and respectful personality. With a strong interest in technology and digital solutions, he aims to create platforms that empower students and communities through knowledge, collaboration, and innovation.
+
+He comes from a family that values education and technological advancement. His elder brother, **Daniel Agyen**, is currently pursuing a **Master’s degree in Computer Science**, which continues to inspire Emmanuel’s journey in the technology field.
+
+For inquiries, collaboration, or opportunities, you can reach Emmanuel at:
+**Email:** [emmasco2025@gmail.com](mailto:emmasco2025@gmail.com)
+**Website:** uccai.online`;
 
 type Message = {
   id: string;
@@ -25,7 +72,7 @@ type Attachment = {
 // --- Chat Interface Components ---
 
 // Sidebar Component
-const Sidebar = ({ onNewChat, isOpen, onClose }: { onNewChat: () => void, isOpen: boolean, onClose: () => void }) => {
+const Sidebar = ({ onNewChat, onShowFounder, onSelectItem, isOpen, onClose }: { onNewChat: () => void, onShowFounder: () => void, onSelectItem: (item: string) => void, isOpen: boolean, onClose: () => void }) => {
   return (
   <>
     {/* Mobile Overlay Backdrop */}
@@ -37,10 +84,14 @@ const Sidebar = ({ onNewChat, isOpen, onClose }: { onNewChat: () => void, isOpen
     />
 
     {/* Sidebar Container */}
-    <div className={`
-      fixed inset-y-0 left-0 z-40 w-[260px] h-full bg-[#171717] flex flex-col transition-transform duration-300 ease-in-out md:translate-x-0 md:static md:inset-auto md:flex-none border-r border-white/5 md:border-none
-      ${isOpen ? "translate-x-0" : "-translate-x-full"}
-    `}>
+    <motion.div 
+      initial={false}
+      animate={{ x: isOpen || window.innerWidth >= 768 ? 0 : -260 }}
+      transition={{ type: "spring", damping: 25, stiffness: 200 }}
+      className={`
+        fixed inset-y-0 left-0 z-40 w-[260px] h-full bg-[#171717] flex flex-col md:static md:inset-auto md:flex-none border-r border-white/5 md:border-none
+      `}
+    >
       <div className="p-3">
          <button 
             onClick={() => {
@@ -51,30 +102,60 @@ const Sidebar = ({ onNewChat, isOpen, onClose }: { onNewChat: () => void, isOpen
          >
             <div className="flex items-center gap-2">
               <div className="p-1 bg-white rounded-full h-6 w-6 flex items-center justify-center text-black">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+                  <Plus size={14} strokeWidth={3} />
               </div>
               <span>New chat</span>
             </div>
-            <svg className="w-4 h-4 text-gray-500 opacity-0 group-hover:opacity-100" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+            <MessageSquare size={14} className="text-gray-500 opacity-0 group-hover:opacity-100" />
          </button>
       </div>
       
       <div className="flex-1 overflow-y-auto px-3 py-2 scrollbar-thin scrollbar-thumb-gray-700">
-          <div className="text-xs font-semibold text-gray-500 mb-2 px-2 pt-2">Today</div>
+          <div className="text-xs font-semibold text-gray-500 mb-2 px-2 pt-2 uppercase tracking-wider flex justify-between items-center">
+              <span>Today</span>
+              <span className="text-[10px] opacity-60 font-normal">{new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+          </div>
           {['Latest AI News', 'React 19 Features', 'Stock Market Trends'].map((item, i) => (
-              <div key={i} className="px-2 py-2 text-sm text-gray-300 hover:bg-[#212121] rounded-lg cursor-pointer truncate transition-colors">
+              <div 
+                key={i} 
+                onClick={() => onSelectItem(item)}
+                className="px-2 py-2 text-sm text-gray-300 hover:bg-[#212121] rounded-lg cursor-pointer truncate transition-colors flex items-center gap-2"
+              >
+                  <MessageSquare size={14} className="text-gray-500" />
                   {item}
               </div>
           ))}
           
-          <div className="text-xs font-semibold text-gray-500 mb-2 px-2 pt-4">Previous 7 Days</div>
+          <div className="text-xs font-semibold text-gray-500 mb-2 px-2 pt-4 uppercase tracking-wider">Previous 7 Days</div>
           {['Weekly Meal Prep', 'Debug Python Script', 'Tokyo Travel Guide'].map((item, i) => (
-              <div key={i + 10} className="px-2 py-2 text-sm text-gray-300 hover:bg-[#212121] rounded-lg cursor-pointer truncate transition-colors">
+              <div 
+                key={i + 10} 
+                onClick={() => onSelectItem(item)}
+                className="px-2 py-2 text-sm text-gray-300 hover:bg-[#212121] rounded-lg cursor-pointer truncate transition-colors flex items-center gap-2"
+              >
+                  <MessageSquare size={14} className="text-gray-500" />
                   {item}
               </div>
           ))}
       </div>
-    </div>
+
+      <div className="p-3 border-t border-white/5 space-y-1">
+          <button 
+            onClick={onShowFounder}
+            className="flex items-center gap-2 px-3 py-2 w-full rounded-lg hover:bg-[#212121] text-sm text-gray-400 transition-colors"
+          >
+            <User size={16} />
+            <span>About Founder</span>
+          </button>
+          <button 
+            onClick={() => window.open('https://uccai.online', '_blank')}
+            className="flex items-center gap-2 px-3 py-2 w-full rounded-lg hover:bg-[#212121] text-sm text-gray-400 transition-colors"
+          >
+            <Globe size={16} />
+            <span>Visit Website</span>
+          </button>
+      </div>
+    </motion.div>
   </>
   );
 };
@@ -106,7 +187,7 @@ const MessageBubble: React.FC<{ message: Message }> = ({ message }) => {
             ? 'hidden' // Hide user avatar in ChatGPT style
             : 'bg-white text-black'
         }`}>
-          {isUser ? '' : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>}
+          {isUser ? '' : <Sparkles size={16} />}
         </div>
 
         {/* Bubble */}
@@ -178,6 +259,7 @@ const ChatInterface = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [showFounderModal, setShowFounderModal] = useState(false);
   
   // Ref to persist the chat session across renders
   const chatSessionRef = useRef<GenAIChat | null>(null);
@@ -193,16 +275,11 @@ const ChatInterface = () => {
       const dateString = today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
       
       chatSessionRef.current = ai.chats.create({
-        model: 'gemini-flash-lite-latest',
+        model: 'gemini-3-flash-preview',
         config: {
+          tools: [{ googleSearch: {} }],
           thinkingConfig: { thinkingBudget: 0 }, // Speed optimization: Disable thinking
-          systemInstruction: `You are UCCAI, a helpful, intelligent, and precise AI assistant. 
-          Current Date: ${dateString}.
-          You answer questions clearly and concisely. You format your answers using Markdown.
-          You can analyze images and documents provided by the user.
-          
-          About the Founder:
-          Emmanuel Agyemang is the founder of [UCCAI.online](https://www.uccai.online), a platform dedicated to innovation and technology solutions. He is currently pursuing a BSc in Economics with Finance at the University of Cape Coast, while also working as a skilled software developer. Known for his humility, calm nature, and strong faith in God, Emmanuel balances academics and technology with purpose. His elder brother, Daniel Agyemang, is pursuing BSc in Computer Science in the UK, showing that tech talent runs in the family.`,
+          systemInstruction: getSystemInstruction(dateString),
         }
       });
     } catch (error) {
@@ -227,16 +304,11 @@ const ChatInterface = () => {
         const dateString = today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
         
         chatSessionRef.current = ai.chats.create({
-            model: 'gemini-flash-lite-latest',
+            model: 'gemini-3-flash-preview',
             config: {
+              tools: [{ googleSearch: {} }],
               thinkingConfig: { thinkingBudget: 0 }, // Speed optimization: Disable thinking
-              systemInstruction: `You are UCCAI, a helpful, intelligent, and precise AI assistant. 
-              Current Date: ${dateString}.
-              You answer questions clearly and concisely. You format your answers using Markdown.
-              You can analyze images and documents provided by the user.
-
-              About the Founder:
-              Emmanuel Agyemang is the founder of [UCCAI.online](https://www.uccai.online), a platform dedicated to innovation and technology solutions. He is currently pursuing a BSc in Economics with Finance at the University of Cape Coast, while also working as a skilled software developer. Known for his humility, calm nature, and strong faith in God, Emmanuel balances academics and technology with purpose. His elder brother, Daniel Agyemang, is pursuing BSc in Computer Science in the UK, showing that tech talent runs in the family.`,
+              systemInstruction: getSystemInstruction(dateString),
             }
         });
         
@@ -274,7 +346,25 @@ const ChatInterface = () => {
   // Handle message sending
   const handleSend = async (textOverride?: string) => {
     const textToSend = textOverride || input;
-    // Allow sending if there's text OR attachments
+    
+    // Ensure chat session is initialized
+    if (!chatSessionRef.current) {
+        try {
+            const today = new Date();
+            const dateString = today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+            chatSessionRef.current = ai.chats.create({
+                model: 'gemini-3-flash-preview',
+                config: {
+                    tools: [{ googleSearch: {} }],
+                    thinkingConfig: { thinkingBudget: 0 },
+                    systemInstruction: getSystemInstruction(dateString),
+                }
+            });
+        } catch (e) {
+            console.error("Failed to initialize session on the fly", e);
+        }
+    }
+
     if ((!textToSend.trim() && attachments.length === 0) || isLoading || !chatSessionRef.current) return;
 
     setInput("");
@@ -365,9 +455,89 @@ const ChatInterface = () => {
       {/* Sidebar */}
       <Sidebar 
         onNewChat={handleNewChat} 
+        onShowFounder={() => {
+            setShowFounderModal(true);
+            if (window.innerWidth < 768) setIsSidebarOpen(false);
+        }}
+        onSelectItem={(item) => {
+            handleSend(item);
+            if (window.innerWidth < 768) setIsSidebarOpen(false);
+        }}
         isOpen={isSidebarOpen} 
         onClose={() => setIsSidebarOpen(false)}
       />
+
+      {/* Founder Modal */}
+      <AnimatePresence>
+        {showFounderModal && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                <motion.div 
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+                    onClick={() => setShowFounderModal(false)}
+                />
+                <motion.div 
+                    initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                    className="relative bg-[#2f2f2f] w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden border border-white/10"
+                >
+                    <div className="p-6">
+                        <div className="flex justify-between items-start mb-6">
+                            <div className="flex items-center gap-3">
+                                <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center text-black">
+                                    <User size={24} />
+                                </div>
+                                <div>
+                                    <h3 className="text-xl font-bold text-white">Emmanuel Agyemang</h3>
+                                    <p className="text-sm text-gray-400">Founder of UCCAI.online</p>
+                                </div>
+                            </div>
+                            <button 
+                                onClick={() => setShowFounderModal(false)}
+                                className="p-2 hover:bg-white/10 rounded-full transition-colors"
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        <div className="space-y-4 text-gray-300 text-sm leading-relaxed">
+                            <p>
+                                <strong className="text-white">Emmanuel Agyemang</strong> is the founder of <strong className="text-white">UCCAI.online</strong> (uccai.online) and a passionate software developer dedicated to using technology to support learning and innovation. He is currently pursuing a <strong className="text-white">Bachelor of Science (BSc) in Economics with Finance at the University of Cape Coast (UCC)</strong>.
+                            </p>
+                            <p>
+                                Emmanuel is known for his simple, kind, and respectful personality. With a strong interest in technology and digital solutions, he aims to create platforms that empower students and communities through knowledge, collaboration, and innovation.
+                            </p>
+                            <p>
+                                He comes from a family that values education and technological advancement. His elder brother, <strong className="text-white">Daniel Agyen</strong>, is currently pursuing a <strong className="text-white">Master’s degree in Computer Science</strong>, which continues to inspire Emmanuel’s journey in the technology field.
+                            </p>
+                            
+                            <div className="pt-4 border-t border-white/5 space-y-2">
+                                <div className="flex items-center gap-3">
+                                    <Mail size={16} className="text-gray-500" />
+                                    <a href="mailto:emmasco2025@gmail.com" className="hover:text-white transition-colors">emmasco2025@gmail.com</a>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <Globe size={16} className="text-gray-500" />
+                                    <a href="https://uccai.online" target="_blank" className="hover:text-white transition-colors">uccai.online</a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="bg-[#212121] p-4 flex justify-end px-6">
+                        <button 
+                            onClick={() => setShowFounderModal(false)}
+                            className="px-4 py-2 bg-white text-black rounded-lg font-medium hover:bg-gray-200 transition-colors"
+                        >
+                            Close
+                        </button>
+                    </div>
+                </motion.div>
+            </div>
+        )}
+      </AnimatePresence>
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col h-full relative w-full min-w-0">
@@ -380,24 +550,36 @@ const ChatInterface = () => {
                     onClick={() => setIsSidebarOpen(true)}
                     className="p-2 text-gray-400 hover:text-white"
                  >
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+                    <PanelLeft size={24} />
                  </button>
             </div>
-            <button className="pointer-events-auto flex items-center gap-1.5 text-lg font-semibold text-gray-200 px-3 py-2 rounded-xl hover:bg-[#2f2f2f] transition-colors cursor-pointer ml-auto md:ml-0 mr-auto md:mr-0">
-                <span>UCCAI</span>
-                <span className="text-gray-500 text-lg">Flash Lite</span>
-                <svg className="w-4 h-4 text-gray-500 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+            <button className="pointer-events-auto flex flex-col items-center md:items-start gap-0 text-lg font-semibold text-gray-200 px-3 py-2 rounded-xl hover:bg-[#2f2f2f] transition-colors cursor-pointer ml-auto md:ml-0 mr-auto md:mr-0">
+                <div className="flex items-center gap-1.5">
+                    <span>UCCAI</span>
+                    <span className="text-gray-500 text-lg">Flash Lite</span>
+                    <ChevronDown size={16} className="text-gray-500 mt-0.5" />
+                </div>
+                <div className="text-[10px] text-gray-500 font-normal -mt-1">
+                    {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                </div>
             </button>
             <div className="w-10 md:hidden"></div> {/* spacer */}
         </div>
 
         {/* Scrollable Area - Use Flex-1 and min-h-0 to allow scrolling inside flex item */}
         <div className="flex-1 overflow-y-auto w-full relative min-h-0 scroll-smooth pt-16 md:pt-14">
+            <AnimatePresence mode="wait">
             {messages.length === 0 ? (
-                <div className="min-h-full flex flex-col items-center justify-center p-4">
-                        <div className="w-16 h-16 bg-white rounded-full mb-6 flex items-center justify-center shadow-lg animate-fade-in-up">
+                <motion.div 
+                    key="empty"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    className="min-h-full flex flex-col items-center justify-center p-4"
+                >
+                        <div className="w-16 h-16 bg-white rounded-full mb-6 flex items-center justify-center shadow-lg">
                             {/* Logo */}
-                            <svg className="w-8 h-8 text-black" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+                            <Sparkles size={32} className="text-black" />
                         </div>
                         <h2 className="text-2xl md:text-3xl font-semibold mb-8 text-center text-white">What can I help with?</h2>
                         
@@ -409,18 +591,18 @@ const ChatInterface = () => {
                                     <div className="text-xs text-gray-500 mt-1">Get today's top headlines</div>
                                 </div>
                                 <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-black/20 p-1 rounded">
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                                    <Search size={14} />
                                 </div>
                             </div>
                         </button>
-                        <button onClick={() => handleSend("Draft a professional email")} className="p-4 rounded-xl border border-white/10 hover:bg-[#2f2f2f] text-left transition-all hover:border-white/20 group">
+                        <button onClick={() => handleSend("Teach me about Concord and its rules")} className="p-4 rounded-xl border border-white/10 hover:bg-[#2f2f2f] text-left transition-all hover:border-white/20 group">
                             <div className="flex justify-between items-start">
                                 <div>
-                                    <div className="font-medium text-sm text-gray-200">Draft an email</div>
-                                    <div className="text-xs text-gray-500 mt-1">requesting a deadline extension</div>
+                                    <div className="font-medium text-sm text-gray-200">DO YOU WANT TO LEARN CONCORD</div>
+                                    <div className="text-xs text-gray-500 mt-1">Explore Concord learning resources</div>
                                 </div>
                                 <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-black/20 p-1 rounded">
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                                    <Sparkles size={14} />
                                 </div>
                             </div>
                         </button>
@@ -431,7 +613,7 @@ const ChatInterface = () => {
                                     <div className="text-xs text-gray-500 mt-1">in simple terms</div>
                                 </div>
                                 <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-black/20 p-1 rounded">
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                                    <Info size={14} />
                                 </div>
                             </div>
                         </button>
@@ -442,20 +624,26 @@ const ChatInterface = () => {
                                     <div className="text-xs text-gray-500 mt-1">find errors in a snippet</div>
                                 </div>
                                 <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-black/20 p-1 rounded">
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                                    <Code size={14} />
                                 </div>
                             </div>
                         </button>
                         </div>
-                </div>
+                </motion.div>
             ) : (
-                <div className="w-full min-h-full pb-4">
+                <motion.div 
+                    key="chat"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="w-full min-h-full pb-4"
+                >
                     {messages.map((msg) => (
                         <MessageBubble key={msg.id} message={msg} />
                     ))}
                     <div ref={messagesEndRef} className="h-4" />
-                </div>
+                </motion.div>
             )}
+            </AnimatePresence>
         </div>
 
         {/* Static Input Area (Footer) - Ensures layout stability and scrolling */}
@@ -471,14 +659,14 @@ const ChatInterface = () => {
                                         {att.file.type.startsWith('image/') ? (
                                             <img src={att.previewUrl} alt="preview" className="w-full h-full object-cover" />
                                         ) : (
-                                            <svg className="w-8 h-8 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+                                            <Paperclip size={24} className="text-gray-400" />
                                         )}
                                     </div>
                                     <button 
                                         onClick={() => removeAttachment(idx)}
                                         className="absolute -top-2 -right-2 bg-gray-700 text-white rounded-full p-0.5 shadow-md hover:bg-red-500 transition-colors"
                                     >
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                                        <X size={14} strokeWidth={3} />
                                     </button>
                                 </div>
                             ))}
@@ -515,7 +703,7 @@ const ChatInterface = () => {
                                 className="p-2 hover:bg-[#424242] rounded-full transition-colors hover:text-white" 
                                 title="Attach file"
                              >
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                                <Paperclip size={20} />
                              </button>
                         </div>
                         <div className="flex gap-2">
@@ -528,7 +716,7 @@ const ChatInterface = () => {
                                     : "bg-[#676767]/30 text-gray-500 cursor-not-allowed"
                                 }`}
                             >
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>
+                                <ArrowUp size={18} strokeWidth={3} />
                             </button>
                         </div>
                     </div>
