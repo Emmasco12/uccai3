@@ -261,6 +261,8 @@ const ChatInterface = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [showFounderModal, setShowFounderModal] = useState(false);
   
+  const isApiKeyMissing = !process.env.API_KEY || process.env.API_KEY === "undefined" || process.env.API_KEY === "null";
+  
   // Ref to persist the chat session across renders
   const chatSessionRef = useRef<GenAIChat | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -542,6 +544,12 @@ const ChatInterface = () => {
       {/* Main Content */}
       <div className="flex-1 flex flex-col h-full relative w-full min-w-0">
         
+        {isApiKeyMissing && (
+            <div className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-2 text-amber-500 text-xs text-center z-50">
+                API Key is missing. Please set <strong>GEMINI_API_KEY</strong> or <strong>API_KEY</strong> in your environment variables.
+            </div>
+        )}
+
         {/* Header / Top Bar (Non-Absolute to simplify layout or Absolute with spacer) */}
         {/* Using absolute header but ensuring scroll container has top padding or transparency is managed */}
         <div className="absolute top-0 left-0 right-0 p-3 z-20 flex justify-between items-center md:justify-start bg-[#212121]/80 backdrop-blur-sm md:bg-transparent md:backdrop-blur-none pointer-events-none md:pointer-events-auto">
