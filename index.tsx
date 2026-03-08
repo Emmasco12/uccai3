@@ -25,8 +25,14 @@ import { motion, AnimatePresence } from "motion/react";
 declare const marked: any;
 declare const hljs: any;
 
-// Initialize the API client
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Helper to get API client lazily
+const getAIClient = () => {
+    const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
+    if (!apiKey || apiKey === "undefined" || apiKey === "null") {
+        return null;
+    }
+    return new GoogleGenAI({ apiKey });
+};
 
 const getSystemInstruction = (dateString: string) => `You are UCCAI, a helpful, intelligent, and precise AI assistant. 
 Current Date: ${dateString}.
@@ -271,6 +277,9 @@ const ChatInterface = () => {
 
   // Initialize chat session
   useEffect(() => {
+    const ai = getAIClient();
+    if (!ai) return;
+
     try {
       // Get current date for the system prompt
       const today = new Date();
@@ -300,6 +309,10 @@ const ChatInterface = () => {
   const handleNewChat = () => {
       setMessages([]);
       setAttachments([]);
+      
+      const ai = getAIClient();
+      if (!ai) return;
+
       // Re-initialize chat session to clear history context
       try {
         const today = new Date();
@@ -351,19 +364,22 @@ const ChatInterface = () => {
     
     // Ensure chat session is initialized
     if (!chatSessionRef.current) {
-        try {
-            const today = new Date();
-            const dateString = today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-            chatSessionRef.current = ai.chats.create({
-                model: 'gemini-3-flash-preview',
-                config: {
-                    tools: [{ googleSearch: {} }],
-                    thinkingConfig: { thinkingBudget: 0 },
-                    systemInstruction: getSystemInstruction(dateString),
-                }
-            });
-        } catch (e) {
-            console.error("Failed to initialize session on the fly", e);
+        const ai = getAIClient();
+        if (ai) {
+            try {
+                const today = new Date();
+                const dateString = today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+                chatSessionRef.current = ai.chats.create({
+                    model: 'gemini-3-flash-preview',
+                    config: {
+                        tools: [{ googleSearch: {} }],
+                        thinkingConfig: { thinkingBudget: 0 },
+                        systemInstruction: getSystemInstruction(dateString),
+                    }
+                });
+            } catch (e) {
+                console.error("Failed to initialize session on the fly", e);
+            }
         }
     }
 
