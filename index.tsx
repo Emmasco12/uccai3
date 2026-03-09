@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
-import { GoogleGenAI, Chat as GenAIChat, GenerateContentResponse } from "@google/genai";
 import { 
   Plus, 
   MessageSquare, 
@@ -24,21 +23,6 @@ import { motion, AnimatePresence } from "motion/react";
 // Declare globals for the CDN libraries
 declare const marked: any;
 declare const hljs: any;
-
-// Helper to get API client lazily
-const getApiKey = () => {
-    const key = process.env.API_KEY || process.env.GEMINI_API_KEY;
-    if (!key || key === "undefined" || key === "null" || key.trim() === "") {
-        return null;
-    }
-    return key;
-};
-
-const getAIClient = () => {
-    const apiKey = getApiKey();
-    if (!apiKey) return null;
-    return new GoogleGenAI({ apiKey });
-};
 
 const getSystemInstruction = (dateString: string) => `You are UCCAI, a helpful, intelligent, and precise AI assistant. 
 Current Date: ${dateString}.
@@ -273,36 +257,10 @@ const ChatInterface = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [showFounderModal, setShowFounderModal] = useState(false);
   
-  const isApiKeyMissing = !getApiKey();
-  
   // Ref to persist the chat session across renders
-  const chatSessionRef = useRef<GenAIChat | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Initialize chat session
-  useEffect(() => {
-    const ai = getAIClient();
-    if (!ai) return;
-
-    try {
-      // Get current date for the system prompt
-      const today = new Date();
-      const dateString = today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-      
-      chatSessionRef.current = ai.chats.create({
-        model: 'gemini-3-flash-preview',
-        config: {
-          tools: [{ googleSearch: {} }],
-          thinkingConfig: { thinkingBudget: 0 }, // Speed optimization: Disable thinking
-          systemInstruction: getSystemInstruction(dateString),
-        }
-      });
-    } catch (error) {
-      console.error("Failed to initialize chat:", error);
-    }
-  }, []);
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -316,28 +274,8 @@ const ChatInterface = () => {
       setMessages([]);
       setAttachments([]);
       
-      const ai = getAIClient();
-      if (!ai) return;
-
-      // Re-initialize chat session to clear history context
-      try {
-        const today = new Date();
-        const dateString = today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-        
-        chatSessionRef.current = ai.chats.create({
-            model: 'gemini-3-flash-preview',
-            config: {
-              tools: [{ googleSearch: {} }],
-              thinkingConfig: { thinkingBudget: 0 }, // Speed optimization: Disable thinking
-              systemInstruction: getSystemInstruction(dateString),
-            }
-        });
-        
-        // Focus input after new chat
-        setTimeout(() => inputRef.current?.focus(), 100);
-      } catch (error) {
-          console.error("Failed to reset chat:", error);
-      }
+      // Focus input after new chat
+      setTimeout(() => inputRef.current?.focus(), 100);
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -368,28 +306,7 @@ const ChatInterface = () => {
   const handleSend = async (textOverride?: string) => {
     const textToSend = textOverride || input;
     
-    // Ensure chat session is initialized
-    if (!chatSessionRef.current) {
-        const ai = getAIClient();
-        if (ai) {
-            try {
-                const today = new Date();
-                const dateString = today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-                chatSessionRef.current = ai.chats.create({
-                    model: 'gemini-3-flash-preview',
-                    config: {
-                        tools: [{ googleSearch: {} }],
-                        thinkingConfig: { thinkingBudget: 0 },
-                        systemInstruction: getSystemInstruction(dateString),
-                    }
-                });
-            } catch (e) {
-                console.error("Failed to initialize session on the fly", e);
-            }
-        }
-    }
-
-    if ((!textToSend.trim() && attachments.length === 0) || isLoading || !chatSessionRef.current) return;
+    if ((!textToSend.trim() && attachments.length === 0) || isLoading) return;
 
     setInput("");
     const currentAttachments = [...attachments];
@@ -403,12 +320,14 @@ const ChatInterface = () => {
     const userMsgId = Date.now().toString();
     const displayImages = currentAttachments.map(a => a.previewUrl);
     
-    setMessages(prev => [...prev, { 
+    const newUserMsg: Message = { 
         id: userMsgId, 
         role: 'user', 
         text: textToSend,
         images: displayImages // Save preview URLs for history
-    }]);
+    };
+    
+    setMessages(prev => [...prev, newUserMsg]);
 
     // Prepare placeholder for AI response
     const aiMsgId = (Date.now() + 1).toString();
@@ -416,33 +335,67 @@ const ChatInterface = () => {
 
     try {
       // Prepare Parts for API
-      const parts: any[] = [];
+      const currentParts: any[] = [];
       
       // Process attachments in parallel for speed
       if (currentAttachments.length > 0) {
         const processedParts = await Promise.all(currentAttachments.map(att => fileToPart(att.file)));
-        parts.push(...processedParts);
+        currentParts.push(...processedParts);
       }
 
       // Add text part if exists
       if (textToSend.trim()) {
-          parts.push({ text: textToSend });
+          currentParts.push({ text: textToSend });
       }
 
-      // Send request (passing parts array as message)
-      const streamResult = await chatSessionRef.current.sendMessageStream({ message: parts });
+      // Prepare history for the server
+      // We convert our local message state to the format Gemini expects
+      const history = messages.map(msg => ({
+          role: msg.role,
+          parts: [{ text: msg.text }]
+      }));
       
+      // Add the current message
+      history.push({
+          role: 'user',
+          parts: currentParts
+      });
+
+      const today = new Date();
+      const dateString = today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
+      // Send request to our Node.js backend
+      const response = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+              messages: history,
+              systemInstruction: getSystemInstruction(dateString)
+          })
+      });
+
+      if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || "Failed to get response from server");
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error("Failed to get reader from response");
+
+      const decoder = new TextDecoder();
       let fullText = "";
       
-      for await (const chunk of streamResult) {
-        const c = chunk as GenerateContentResponse;
-        const chunkText = c.text || "";
-        fullText += chunkText;
+      while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          
+          const chunkText = decoder.decode(value, { stream: true });
+          fullText += chunkText;
 
-        // Update the last message with new content
-        setMessages(prev => prev.map(msg => 
-          msg.id === aiMsgId ? { ...msg, text: fullText } : msg
-        ));
+          // Update the last message with new content
+          setMessages(prev => prev.map(msg => 
+            msg.id === aiMsgId ? { ...msg, text: fullText } : msg
+          ));
       }
 
       // Mark streaming as done
@@ -450,11 +403,11 @@ const ChatInterface = () => {
         msg.id === aiMsgId ? { ...msg, isStreaming: false } : msg
       ));
 
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error sending message:", error);
       setMessages(prev => prev.map(msg => 
         msg.id === aiMsgId 
-          ? { ...msg, text: "Sorry, I encountered an error processing your request. Please ensure your API key is valid, your file types are supported, and you are connected to the internet.", isStreaming: false } 
+          ? { ...msg, text: `Error: ${error.message || "I encountered an error processing your request. Please ensure your API key is valid and you are connected to the internet."}`, isStreaming: false } 
           : msg
       ));
     } finally {
@@ -566,12 +519,6 @@ const ChatInterface = () => {
       {/* Main Content */}
       <div className="flex-1 flex flex-col h-full relative w-full min-w-0">
         
-        {isApiKeyMissing && (
-            <div className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-2 text-amber-500 text-xs text-center z-50">
-                API Key is missing. Please set <strong>GEMINI_API_KEY</strong> or <strong>API_KEY</strong> in your environment variables.
-            </div>
-        )}
-
         {/* Header / Top Bar (Non-Absolute to simplify layout or Absolute with spacer) */}
         {/* Using absolute header but ensuring scroll container has top padding or transparency is managed */}
         <div className="absolute top-0 left-0 right-0 p-3 z-20 flex justify-between items-center md:justify-start bg-[#212121]/80 backdrop-blur-sm md:bg-transparent md:backdrop-blur-none pointer-events-none md:pointer-events-auto">
