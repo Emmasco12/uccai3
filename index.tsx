@@ -26,11 +26,17 @@ declare const marked: any;
 declare const hljs: any;
 
 // Helper to get API client lazily
-const getAIClient = () => {
-    const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
-    if (!apiKey || apiKey === "undefined" || apiKey === "null") {
+const getApiKey = () => {
+    const key = process.env.API_KEY || process.env.GEMINI_API_KEY;
+    if (!key || key === "undefined" || key === "null" || key.trim() === "") {
         return null;
     }
+    return key;
+};
+
+const getAIClient = () => {
+    const apiKey = getApiKey();
+    if (!apiKey) return null;
     return new GoogleGenAI({ apiKey });
 };
 
@@ -267,7 +273,7 @@ const ChatInterface = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [showFounderModal, setShowFounderModal] = useState(false);
   
-  const isApiKeyMissing = !process.env.API_KEY || process.env.API_KEY === "undefined" || process.env.API_KEY === "null";
+  const isApiKeyMissing = !getApiKey();
   
   // Ref to persist the chat session across renders
   const chatSessionRef = useRef<GenAIChat | null>(null);
