@@ -327,7 +327,8 @@ const ChatInterface = () => {
         images: displayImages // Save preview URLs for history
     };
     
-    setMessages(prev => [...prev, newUserMsg]);
+    const updatedMessages = [...messages, newUserMsg];
+    setMessages(updatedMessages);
 
     // Prepare placeholder for AI response
     const aiMsgId = (Date.now() + 1).toString();
@@ -350,16 +351,16 @@ const ChatInterface = () => {
 
       // Prepare history for the server
       // We convert our local message state to the format Gemini expects
-      const history = messages.map(msg => ({
+      const history = updatedMessages.map(msg => ({
           role: msg.role,
           parts: [{ text: msg.text }]
       }));
       
-      // Add the current message
-      history.push({
-          role: 'user',
-          parts: currentParts
-      });
+      // The last message in updatedMessages is the user message we just added.
+      // However, it only has text. If there are attachments, we need to use currentParts.
+      if (currentParts.length > 0) {
+          history[history.length - 1].parts = currentParts;
+      }
 
       const today = new Date();
       const dateString = today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
@@ -375,8 +376,16 @@ const ChatInterface = () => {
       });
 
       if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || "Failed to get response from server");
+          let errorMessage = "Failed to get response from server";
+          try {
+              const errorData = await response.json();
+              errorMessage = errorData.error || errorMessage;
+          } catch (e) {
+              // If not JSON, get the text
+              const errorText = await response.text();
+              errorMessage = `Server Error (${response.status}): ${errorText.substring(0, 100)}`;
+          }
+          throw new Error(errorMessage);
       }
 
       const reader = response.body?.getReader();

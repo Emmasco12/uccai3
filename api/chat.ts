@@ -1,9 +1,16 @@
 import { GoogleGenAI } from "@google/genai";
 
 export default async function handler(req: any, res: any) {
+  console.log(`API Chat called with method: ${req.method}`);
+  
+  // Handle GET for health check
+  if (req.method === 'GET') {
+    return res.status(200).json({ status: "ok", message: "API is working", env: { hasKey: !!(process.env.GEMINI_API_KEY || process.env.API_KEY) } });
+  }
+
   // Only allow POST requests
   if (req.method !== 'POST') {
-    res.setHeader('Allow', ['POST']);
+    res.setHeader('Allow', ['POST', 'GET']);
     return res.status(405).json({ error: `Method ${req.method} Not Allowed` });
   }
 
