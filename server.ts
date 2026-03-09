@@ -13,25 +13,17 @@ async function startServer() {
 
   app.use(express.json({ limit: '50mb' }));
 
-  // Initialize the API client
-  const getAIClient = () => {
-    const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
-    if (!apiKey || apiKey === "undefined" || apiKey === "null" || apiKey.trim() === "") {
-        return null;
-    }
-    return new GoogleGenAI({ apiKey });
-  };
-
   // API routes
   app.post("/api/chat", async (req, res) => {
     const { messages, systemInstruction } = req.body;
-    const ai = getAIClient();
+    const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
 
-    if (!ai) {
-      return res.status(500).json({ error: "API Key is missing or invalid." });
+    if (!apiKey || apiKey === "undefined" || apiKey === "null" || apiKey.trim() === "") {
+        return res.status(500).json({ error: "API Key is missing or invalid in environment variables." });
     }
 
     try {
+      const ai = new GoogleGenAI({ apiKey });
       const stream = await ai.models.generateContentStream({
         model: "gemini-3-flash-preview",
         contents: messages,
@@ -43,6 +35,8 @@ async function startServer() {
 
       res.setHeader('Content-Type', 'text/plain; charset=utf-8');
       res.setHeader('Transfer-Encoding', 'chunked');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
 
       for await (const chunk of stream) {
         res.write(chunk.text || "");
@@ -50,7 +44,11 @@ async function startServer() {
       res.end();
     } catch (error: any) {
       console.error("Error in /api/chat:", error);
-      res.status(500).json({ error: error.message || "Internal Server Error" });
+      if (!res.headersSent) {
+        res.status(500).json({ error: error.message || "Internal Server Error" });
+      } else {
+        res.end();
+      }
     }
   });
 
