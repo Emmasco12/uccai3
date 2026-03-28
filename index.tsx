@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
+import { GoogleGenAI, Chat as GenAIChat, GenerateContentResponse } from "@google/genai";
 import { 
   Plus, 
   MessageSquare, 
@@ -24,33 +25,8 @@ import { motion, AnimatePresence } from "motion/react";
 declare const marked: any;
 declare const hljs: any;
 
-const getSystemInstruction = (dateString: string) => `You are UCCAI, a helpful, intelligent, and precise AI assistant. 
-Current Date: ${dateString}.
-You have access to Google Search to provide real-time information and the latest news.
-You answer questions clearly and concisely. You format your answers using Markdown.
-You can analyze images and documents provided by the user.
-
-About Concord (Subject-Verb Agreement):
-When asked about Concord, you should explain that it is the agreement between a subject and its verb in a sentence. 
-Key Rules of Concord to include:
-1. Singular subjects take singular verbs (e.g., "The boy plays").
-2. Plural subjects take plural verbs (e.g., "The boys play").
-3. "And" Rule: Two or more subjects joined by "and" usually take a plural verb.
-4. "Either/Or" and "Neither/Nor" Rule: The verb agrees with the subject closer to it.
-5. Collective Nouns: Usually take singular verbs if the group acts as one.
-6. Indefinite Pronouns: Words like "everyone", "someone", "each" take singular verbs.
-
-About the Founder:
-When asked about the founder, you MUST provide this exact information:
-**Emmanuel Agyemang** is the founder of **UCCAI.online** (uccai.online) and a passionate software developer dedicated to using technology to support learning and innovation. He is currently pursuing a **Bachelor of Science (BSc) in Economics with Finance at the University of Cape Coast (UCC)**.
-
-Emmanuel is known for his simple, kind, and respectful personality. With a strong interest in technology and digital solutions, he aims to create platforms that empower students and communities through knowledge, collaboration, and innovation.
-
-He comes from a family that values education and technological advancement. His elder brother, **Daniel Agyen**, is currently pursuing a **Master’s degree in Computer Science**, which continues to inspire Emmanuel’s journey in the technology field.
-
-For inquiries, collaboration, or opportunities, you can reach Emmanuel at:
-**Email:** [emmasco2025@gmail.com](mailto:emmasco2025@gmail.com)
-**Website:** uccai.online`;
+// Initialize the API client
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 type Message = {
   id: string;
@@ -258,9 +234,46 @@ const ChatInterface = () => {
   const [showFounderModal, setShowFounderModal] = useState(false);
   
   // Ref to persist the chat session across renders
+  const chatSessionRef = useRef<GenAIChat | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Initialize chat session
+  useEffect(() => {
+    try {
+      // Get current date for the system prompt
+      const today = new Date();
+      const dateString = today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+      
+      chatSessionRef.current = ai.chats.create({
+        model: 'gemini-3-flash-preview',
+        config: {
+          tools: [{ googleSearch: {} }],
+          thinkingConfig: { thinkingBudget: 0 }, // Speed optimization: Disable thinking
+          systemInstruction: `You are UCCAI, a helpful, intelligent, and precise AI assistant. 
+          Current Date: ${dateString}.
+          You have access to Google Search to provide real-time information and the latest news.
+          You answer questions clearly and concisely. You format your answers using Markdown.
+          You can analyze images and documents provided by the user.
+          
+          About the Founder:
+          When asked about the founder, you MUST provide this exact information:
+          **Emmanuel Agyemang** is the founder of **UCCAI.online** (uccai.online) and a passionate software developer dedicated to using technology to support learning and innovation. He is currently pursuing a **Bachelor of Science (BSc) in Economics with Finance at the University of Cape Coast (UCC)**.
+          
+          Emmanuel is known for his simple, kind, and respectful personality. With a strong interest in technology and digital solutions, he aims to create platforms that empower students and communities through knowledge, collaboration, and innovation.
+          
+          He comes from a family that values education and technological advancement. His elder brother, **Daniel Agyen**, is currently pursuing a **Master’s degree in Computer Science**, which continues to inspire Emmanuel’s journey in the technology field.
+          
+          For inquiries, collaboration, or opportunities, you can reach Emmanuel at:
+          **Email:** [emmasco2025@gmail.com](mailto:emmasco2025@gmail.com)
+          **Website:** uccai.online`,
+        }
+      });
+    } catch (error) {
+      console.error("Failed to initialize chat:", error);
+    }
+  }, []);
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -273,9 +286,41 @@ const ChatInterface = () => {
   const handleNewChat = () => {
       setMessages([]);
       setAttachments([]);
-      
-      // Focus input after new chat
-      setTimeout(() => inputRef.current?.focus(), 100);
+      // Re-initialize chat session to clear history context
+      try {
+        const today = new Date();
+        const dateString = today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        
+        chatSessionRef.current = ai.chats.create({
+            model: 'gemini-3-flash-preview',
+            config: {
+              tools: [{ googleSearch: {} }],
+              thinkingConfig: { thinkingBudget: 0 }, // Speed optimization: Disable thinking
+              systemInstruction: `You are UCCAI, a helpful, intelligent, and precise AI assistant. 
+              Current Date: ${dateString}.
+              You have access to Google Search to provide real-time information and the latest news.
+              You answer questions clearly and concisely. You format your answers using Markdown.
+              You can analyze images and documents provided by the user.
+
+              About the Founder:
+              When asked about the founder, you MUST provide this exact information:
+              **Emmanuel Agyemang** is the founder of **UCCAI.online** (uccai.online) and a passionate software developer dedicated to using technology to support learning and innovation. He is currently pursuing a **Bachelor of Science (BSc) in Economics with Finance at the University of Cape Coast (UCC)**.
+              
+              Emmanuel is known for his simple, kind, and respectful personality. With a strong interest in technology and digital solutions, he aims to create platforms that empower students and communities through knowledge, collaboration, and innovation.
+              
+              He comes from a family that values education and technological advancement. His elder brother, **Daniel Agyen**, is currently pursuing a **Master’s degree in Computer Science**, which continues to inspire Emmanuel’s journey in the technology field.
+              
+              For inquiries, collaboration, or opportunities, you can reach Emmanuel at:
+              **Email:** [emmasco2025@gmail.com](mailto:emmasco2025@gmail.com)
+              **Website:** uccai.online`,
+            }
+        });
+        
+        // Focus input after new chat
+        setTimeout(() => inputRef.current?.focus(), 100);
+      } catch (error) {
+          console.error("Failed to reset chat:", error);
+      }
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -305,8 +350,8 @@ const ChatInterface = () => {
   // Handle message sending
   const handleSend = async (textOverride?: string) => {
     const textToSend = textOverride || input;
-    
-    if ((!textToSend.trim() && attachments.length === 0) || isLoading) return;
+    // Allow sending if there's text OR attachments
+    if ((!textToSend.trim() && attachments.length === 0) || isLoading || !chatSessionRef.current) return;
 
     setInput("");
     const currentAttachments = [...attachments];
@@ -320,15 +365,12 @@ const ChatInterface = () => {
     const userMsgId = Date.now().toString();
     const displayImages = currentAttachments.map(a => a.previewUrl);
     
-    const newUserMsg: Message = { 
+    setMessages(prev => [...prev, { 
         id: userMsgId, 
         role: 'user', 
         text: textToSend,
         images: displayImages // Save preview URLs for history
-    };
-    
-    const updatedMessages = [...messages, newUserMsg];
-    setMessages(updatedMessages);
+    }]);
 
     // Prepare placeholder for AI response
     const aiMsgId = (Date.now() + 1).toString();
@@ -336,75 +378,33 @@ const ChatInterface = () => {
 
     try {
       // Prepare Parts for API
-      const currentParts: any[] = [];
+      const parts: any[] = [];
       
       // Process attachments in parallel for speed
       if (currentAttachments.length > 0) {
         const processedParts = await Promise.all(currentAttachments.map(att => fileToPart(att.file)));
-        currentParts.push(...processedParts);
+        parts.push(...processedParts);
       }
 
       // Add text part if exists
       if (textToSend.trim()) {
-          currentParts.push({ text: textToSend });
+          parts.push({ text: textToSend });
       }
 
-      // Prepare history for the server
-      // We convert our local message state to the format Gemini expects
-      const history = updatedMessages.map(msg => ({
-          role: msg.role,
-          parts: [{ text: msg.text }]
-      }));
+      // Send request (passing parts array as message)
+      const streamResult = await chatSessionRef.current.sendMessageStream({ message: parts });
       
-      // The last message in updatedMessages is the user message we just added.
-      // However, it only has text. If there are attachments, we need to use currentParts.
-      if (currentParts.length > 0) {
-          history[history.length - 1].parts = currentParts;
-      }
-
-      const today = new Date();
-      const dateString = today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-
-      // Send request to our Node.js backend
-      const response = await fetch("/api/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-              messages: history,
-              systemInstruction: getSystemInstruction(dateString)
-          })
-      });
-
-      if (!response.ok) {
-          let errorMessage = "Failed to get response from server";
-          try {
-              const errorData = await response.json();
-              errorMessage = errorData.error || errorMessage;
-          } catch (e) {
-              // If not JSON, get the text
-              const errorText = await response.text();
-              errorMessage = `Server Error (${response.status}): ${errorText.substring(0, 100)}`;
-          }
-          throw new Error(errorMessage);
-      }
-
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error("Failed to get reader from response");
-
-      const decoder = new TextDecoder();
       let fullText = "";
       
-      while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          
-          const chunkText = decoder.decode(value, { stream: true });
-          fullText += chunkText;
+      for await (const chunk of streamResult) {
+        const c = chunk as GenerateContentResponse;
+        const chunkText = c.text || "";
+        fullText += chunkText;
 
-          // Update the last message with new content
-          setMessages(prev => prev.map(msg => 
-            msg.id === aiMsgId ? { ...msg, text: fullText } : msg
-          ));
+        // Update the last message with new content
+        setMessages(prev => prev.map(msg => 
+          msg.id === aiMsgId ? { ...msg, text: fullText } : msg
+        ));
       }
 
       // Mark streaming as done
@@ -412,11 +412,11 @@ const ChatInterface = () => {
         msg.id === aiMsgId ? { ...msg, isStreaming: false } : msg
       ));
 
-    } catch (error: any) {
+    } catch (error) {
       console.error("Error sending message:", error);
       setMessages(prev => prev.map(msg => 
         msg.id === aiMsgId 
-          ? { ...msg, text: `Error: ${error.message || "I encountered an error processing your request. Please ensure your API key is valid and you are connected to the internet."}`, isStreaming: false } 
+          ? { ...msg, text: "Sorry, I encountered an error processing your request. Please ensure your API key is valid, your file types are supported, and you are connected to the internet.", isStreaming: false } 
           : msg
       ));
     } finally {
@@ -581,14 +581,14 @@ const ChatInterface = () => {
                                 </div>
                             </div>
                         </button>
-                        <button onClick={() => handleSend("Teach me about Concord and its rules")} className="p-4 rounded-xl border border-white/10 hover:bg-[#2f2f2f] text-left transition-all hover:border-white/20 group">
+                        <button onClick={() => handleSend("Draft a professional email")} className="p-4 rounded-xl border border-white/10 hover:bg-[#2f2f2f] text-left transition-all hover:border-white/20 group">
                             <div className="flex justify-between items-start">
                                 <div>
-                                    <div className="font-medium text-sm text-gray-200">DO YOU WANT TO LEARN CONCORD</div>
-                                    <div className="text-xs text-gray-500 mt-1">Explore Concord learning resources</div>
+                                    <div className="font-medium text-sm text-gray-200">Draft an email</div>
+                                    <div className="text-xs text-gray-500 mt-1">requesting a deadline extension</div>
                                 </div>
                                 <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-black/20 p-1 rounded">
-                                    <Sparkles size={14} />
+                                    <MailIcon size={14} />
                                 </div>
                             </div>
                         </button>
