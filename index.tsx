@@ -424,9 +424,10 @@ const ChatInterface = () => {
 
     } catch (error) {
       console.error("Error sending message:", error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
       setMessages(prev => prev.map(msg => 
         msg.id === aiMsgId 
-          ? { ...msg, text: "Sorry, I encountered an error processing your request. Please ensure your API key is valid, your file types are supported, and you are connected to the internet.", isStreaming: false } 
+          ? { ...msg, text: `**Error:** ${errorMessage}\n\n*Please ensure your API key is correctly set in Vercel as GEMINI_API_KEY and that you have triggered a new deployment.*`, isStreaming: false } 
           : msg
       ));
     } finally {
