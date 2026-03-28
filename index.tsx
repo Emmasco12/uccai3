@@ -26,7 +26,8 @@ declare const marked: any;
 declare const hljs: any;
 
 // Initialize the API client
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.API_KEY;
+const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
 
 type Message = {
   id: string;
@@ -242,6 +243,9 @@ const ChatInterface = () => {
   // Initialize chat session
   useEffect(() => {
     try {
+      if (!GEMINI_API_KEY) {
+        throw new Error("API key is missing. Please set GEMINI_API_KEY in your environment variables.");
+      }
       // Get current date for the system prompt
       const today = new Date();
       const dateString = today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
@@ -288,7 +292,10 @@ const ChatInterface = () => {
       setAttachments([]);
       // Re-initialize chat session to clear history context
       try {
-        const today = new Date();
+      if (!GEMINI_API_KEY) {
+        throw new Error("API key is missing. Please set GEMINI_API_KEY in your environment variables.");
+      }
+      const today = new Date();
         const dateString = today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
         
         chatSessionRef.current = ai.chats.create({
@@ -377,6 +384,9 @@ const ChatInterface = () => {
     setMessages(prev => [...prev, { id: aiMsgId, role: 'model', text: "", isStreaming: true }]);
 
     try {
+      if (!GEMINI_API_KEY) {
+        throw new Error("API key is missing. Please set GEMINI_API_KEY in your environment variables.");
+      }
       // Prepare Parts for API
       const parts: any[] = [];
       
